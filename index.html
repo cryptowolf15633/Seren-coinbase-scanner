@@ -178,6 +178,28 @@ document.getElementById("candles").onclick = async () => {
 
     const latest = candles30[candles30.length - 1];
 
+    // Compare the latest candle with the preceding 20.
+    const previous20 = candles30.slice(-21, -1);
+
+    if (previous20.length < 20) {
+      throw new Error("Not enough candles for volume analysis");
+    }
+
+    const averageVolume =
+      previous20.reduce((sum, c) => sum + c.volume, 0) / 20;
+
+    const relativeVolume =
+      averageVolume > 0
+        ? latest.volume / averageVolume
+        : null;
+
+    const volumeSignal =
+      relativeVolume === null
+        ? "Unavailable"
+        : relativeVolume >= 1.5
+          ? "ELEVATED VOLUME"
+          : "Normal volume";
+
     status.textContent =
       "SUCCESS: Built " + candles30.length +
       " completed 30-minute candles.";
@@ -190,7 +212,13 @@ document.getElementById("candles").onclick = async () => {
       ["High", "$" + latest.high.toLocaleString()],
       ["Low", "$" + latest.low.toLocaleString()],
       ["Close", "$" + latest.close.toLocaleString()],
-      ["Volume", latest.volume.toFixed(4) + " BTC"]
+
+      ["Volume", latest.volume.toFixed(4) + " BTC"],
+      ["20-candle average", averageVolume.toFixed(4) + " BTC"],
+      ["Relative volume", relativeVolume === null
+        ? "N/A" : relativeVolume.toFixed(2) + "x"],
+      ["Volume signal", volumeSignal]
+
     ];
 
     for (const [label, value] of details) {
