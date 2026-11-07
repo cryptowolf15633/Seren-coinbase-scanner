@@ -200,6 +200,22 @@ document.getElementById("candles").onclick = async () => {
           ? "ELEVATED VOLUME"
           : "Normal volume";
 
+    // Resistance: highest high of the previous 20 candles.
+    const resistance = Math.max(
+      ...previous20.map(c => c.high)
+    );
+
+    // Percentage distance from resistance.
+    // Negative means below; positive means above.
+    const distanceToResistance =
+      ((latest.close - resistance) / resistance) * 100;
+
+    // Require a close above resistance for a breakout.
+    const breakoutStatus =
+      latest.close > resistance
+        ? "CLOSED ABOVE RESISTANCE"
+        : "No confirmed breakout";
+
     status.textContent =
       "SUCCESS: Built " + candles30.length +
       " completed 30-minute candles.";
@@ -217,7 +233,14 @@ document.getElementById("candles").onclick = async () => {
       ["20-candle average", averageVolume.toFixed(4) + " BTC"],
       ["Relative volume", relativeVolume === null
         ? "N/A" : relativeVolume.toFixed(2) + "x"],
-      ["Volume signal", volumeSignal]
+ 
+      ["Volume signal", volumeSignal],
+      ["20-candle resistance",
+        "$" + resistance.toLocaleString()],
+      ["Distance to resistance",
+        distanceToResistance.toFixed(2) + "%"],
+      ["Breakout status", breakoutStatus]
+
 
     ];
 
