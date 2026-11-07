@@ -216,6 +216,41 @@ document.getElementById("candles").onclick = async () => {
         ? "CLOSED ABOVE RESISTANCE"
         : "No confirmed breakout";
 
+    // Measure the trading range of a candle group.
+    function rangePercent(group) {
+      const highest = Math.max(...group.map(c => c.high));
+      const lowest = Math.min(...group.map(c => c.low));
+
+      const averageClose =
+        group.reduce((sum, c) => sum + c.close, 0)
+        / group.length;
+
+      return ((highest - lowest) / averageClose) * 100;
+    }
+
+    // Compare non-overlapping groups of closed candles.
+    const reference10 = candles30.slice(-16, -6);
+    const recent5 = candles30.slice(-6, -1);
+
+    if (reference10.length !== 10 || recent5.length !== 5) {
+      throw new Error("Not enough candles for compression analysis");
+    }
+
+    const referenceRange = rangePercent(reference10);
+    const recentRange = rangePercent(recent5);
+
+    const compressionRatio =
+      referenceRange > 0
+        ? recentRange / referenceRange
+        : null;
+
+    const compressionSignal =
+      compressionRatio === null
+        ? "Unavailable"
+        : compressionRatio < 0.60
+          ? "COMPRESSION DETECTED"
+          : "No compression detected";
+
     status.textContent =
       "SUCCESS: Built " + candles30.length +
       " completed 30-minute candles.";
@@ -239,7 +274,16 @@ document.getElementById("candles").onclick = async () => {
         "$" + resistance.toLocaleString()],
       ["Distance to resistance",
         distanceToResistance.toFixed(2) + "%"],
-      ["Breakout status", breakoutStatus]
+
+["Breakout status", breakoutStatus],
+["Reference 10-candle range", referenceRange.toFixed(2) + "%"],
+["Recent 5-candle range", recentRange.toFixed(2) + "%"],
+["Compression ratio",
+  compressionRatio === null
+    ? "N/A"
+    : compressionRatio.toFixed(2) + "x"],
+["Compression signal", compressionSignal]
+
 
 
     ];
