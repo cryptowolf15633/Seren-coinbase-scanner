@@ -848,5 +848,138 @@ el("historical").onclick=()=>run(
   }
 );
 </script>
+
+<script>
+(() => {
+  const section = document.createElement("section");
+  section.innerHTML = `
+    <h2>Historical Candle Diagnostics — Version 1</h2>
+    <p class="muted">
+      Inspect Coinbase BTC-USD daily candle data
+      for a selected historical UTC date.
+      Existing scanner calculations are unchanged.
+    </p>
+    <p><strong>Historical UTC date</strong></p>
+    <input id="inspectDate" type="date" value="2026-10-16">
+    <p>
+      <button id="inspectButton">
+        Inspect Daily Candle
+      </button>
+    </p>
+    <div id="inspectStatus" class="status">
+      Ready to inspect historical data.
+    </div>
+    <div id="inspectResults"></div>
+  `;
+
+  document.body.append(section);
+
+  const dateInput = section.querySelector("#inspectDate");
+  const button = section.querySelector("#inspectButton");
+  const status = section.querySelector("#inspectStatus");
+  const results = section.querySelector("#inspectResults");
+
+  function show(label, value) {
+    const p = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.textContent = label + ": ";
+    p.append(strong, document.createTextNode(String(value)));
+    results.append(p);
+  }
+
+  const dollars = n => "$" + n.toLocaleString(
+    "en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }
+  );
+
+  button.onclick = async () => {
+    button.disabled = true;
+    results.replaceChildren();
+    status.className = "status";
+    status.textContent = "Retrieving historical candle...";
+
+    try {
+      const date = dateInput.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error("Select a valid date.");
+      }
+
+      const start = Date.parse(date + "T00:00:00Z");
+      if (!Number.isFinite(start) ||
+          new Date(start).toISOString().slice(0,10) !== date) {
+        throw new Error("Invalid UTC date.");
+      }
+
+      const today = Math.floor(Date.now()/86400000)*86400000;
+      if (start >= today) {
+        throw new Error("Select a completed UTC day.");
+      }
+
+      const end = start + 86400000;
+      const url = new URL(
+        "https://api.exchange.coinbase.com/products/BTC-USD/candles"
+      );
+
+      url.searchParams.set("granularity", "86400");
+      url.searchParams.set("start", new Date(start).toISOString());
+      url.searchParams.set("end", new Date(end).toISOString());
+
+      const response = await fetch(url, {cache:"no-store"});
+      if (!response.ok) {
+        throw new Error("Coinbase HTTP " + response.status);
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data)) {
+        throw new Error("Unexpected Coinbase response.");
+      }
+
+      const candle = data.find(c =>
+        Array.isArray(c) &&
+        c.length >= 6 &&
+        c.slice(0,6).every(Number.isFinite) &&
+        c[0] * 1000 === start
+      );
+
+      if (!candle) {
+        throw new Error("Requested daily candle was not returned.");
+      }
+
+      const [time, low, high, open, close, volume] = candle;
+
+      if (low > high || open < low || open > high ||
+          close < low || close > high || volume < 0) {
+        throw new Error("Invalid candle values.");
+      }
+
+      status.className = "status good";
+      status.textContent = "HISTORICAL CANDLE RETRIEVED.";
+
+      show("Market", "BTC-USD");
+      show("UTC date", date);
+      show("Candle timestamp", new Date(time*1000).toISOString());
+      show("Open", dollars(open));
+      show("High", dollars(high));
+      show("Low", dollars(low));
+      show("Close", dollars(close));
+      show("Volume", volume.toFixed(4) + " BTC");
+      show("Data source", "Coinbase Exchange historical candles");
+      show("Verification",
+        "Compare these values with the same UTC daily candle on Coinbase's chart.");
+      show("Diagnostic limitation",
+        "A matching close does not prove the entire EMA history matches.");
+
+    } catch (error) {
+      status.className = "status error";
+      status.textContent = "DIAGNOSTIC FAILED: " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
