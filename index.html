@@ -43,6 +43,7 @@ input {
   padding:12px;
   font-size:16px;
   max-width:90%;
+  color-scheme:dark;
 }
 .status { margin:14px 0; }
 li { padding:4px; }
@@ -84,27 +85,49 @@ Compares 180, 400, and 800 daily candles,
 including two EMA initialization methods.
 Uses completed UTC daily candles only.
 </p>
-
 <p class="muted">
 Optional: Enter the Coinbase chart's EMA value
 for the same completed UTC daily candle.
 </p>
-
-<input
- id="referenceEma"
- type="number"
- step="0.01"
- placeholder="Coinbase EMA value"
->
-
-<p>
-<button id="daily">Verify Daily EMA</button>
-</p>
-
+<input id="referenceEma" type="number"
+step="0.01" placeholder="Coinbase EMA value">
+<p><button id="daily">Verify Daily EMA</button></p>
 <div id="dailyStatus" class="status">
 Ready to retrieve daily history.
 </div>
 <div id="dailyResults"></div>
+</section>
+
+<section>
+<h2>Historical 50 EMA Verification — Version 3</h2>
+<p class="muted">
+Calculates the 50 EMA on a selected historical
+UTC daily candle using up to 800 completed
+daily candles ending on that date.
+</p>
+<p class="muted">
+Compare against the Coinbase chart's EMA
+on the exact same historical candle.
+</p>
+
+<p><strong>Historical UTC date</strong></p>
+<input id="historicalDate" type="date"
+value="2026-10-15">
+
+<p><strong>Coinbase chart EMA (optional)</strong></p>
+<input id="historicalReference" type="number"
+step="0.01" value="80261.06">
+
+<p>
+<button id="historical">
+Verify Historical EMA
+</button>
+</p>
+
+<div id="historicalStatus" class="status">
+Ready to retrieve historical data.
+</div>
+<div id="historicalResults"></div>
 </section>
 
 <script>
@@ -129,15 +152,9 @@ const iso=t=>
 function detail(root,label,value,cls="") {
   const p=document.createElement("p");
   p.className=cls;
-
   const b=document.createElement("strong");
   b.textContent=label+": ";
-
-  p.append(
-    b,
-    document.createTextNode(String(value))
-  );
-
+  p.append(b,document.createTextNode(String(value)));
   root.append(p);
 }
 
@@ -148,27 +165,22 @@ async function fetchCandles(
     API+"/products/"+product+"/candles"
   );
 
-  url.searchParams.set(
-    "granularity",granularity
-  );
+  url.searchParams.set("granularity",granularity);
 
   if(start!==undefined) {
     url.searchParams.set(
-      "start",
-      new Date(start*1000).toISOString()
+      "start",new Date(start*1000).toISOString()
     );
   }
 
   if(end!==undefined) {
     url.searchParams.set(
-      "end",
-      new Date(end*1000).toISOString()
+      "end",new Date(end*1000).toISOString()
     );
   }
 
   const response=await fetch(
-    url.toString(),
-    {cache:"no-store"}
+    url.toString(),{cache:"no-store"}
   );
 
   if(!response.ok) {
@@ -180,9 +192,7 @@ async function fetchCandles(
   const data=await response.json();
 
   if(!Array.isArray(data)) {
-    throw new Error(
-      "Unexpected Coinbase response"
-    );
+    throw new Error("Unexpected Coinbase response");
   }
 
   return data;
@@ -231,8 +241,7 @@ function gapCount(candles,step) {
       candles[i].time-candles[i-1].time;
 
     missing+=Math.max(
-      0,
-      Math.round(difference/step)-1
+      0,Math.round(difference/step)-1
     );
   }
 
@@ -241,13 +250,10 @@ function gapCount(candles,step) {
 
 function ema(closes,period=50,seed="sma") {
   if(closes.length<period) {
-    throw new Error(
-      "Insufficient EMA history"
-    );
+    throw new Error("Insufficient EMA history");
   }
 
   const alpha=2/(period+1);
-
   let value;
 
   if(seed==="first") {
@@ -260,23 +266,15 @@ function ema(closes,period=50,seed="sma") {
   const start=seed==="first"?1:period;
 
   for(let i=start;i<closes.length;i++) {
-    value=
-      alpha*closes[i]+
-      (1-alpha)*value;
+    value=alpha*closes[i]+(1-alpha)*value;
   }
 
   return value;
 }
 
 function rangePercent(group) {
-  const highest=Math.max(
-    ...group.map(c=>c.high)
-  );
-
-  const lowest=Math.min(
-    ...group.map(c=>c.low)
-  );
-
+  const highest=Math.max(...group.map(c=>c.high));
+  const lowest=Math.min(...group.map(c=>c.low));
   const average=group.reduce(
     (sum,c)=>sum+c.close,0
   )/group.length;
@@ -284,18 +282,14 @@ function rangePercent(group) {
   return (highest-lowest)/average*100;
 }
 
-async function run(
-  buttonId,statusId,resultId,fn
-) {
+async function run(buttonId,statusId,resultId,fn) {
   const button=el(buttonId);
   const status=el(statusId);
   const results=el(resultId);
 
   button.disabled=true;
   status.className="status";
-  status.textContent=
-    "Retrieving Coinbase data...";
-
+  status.textContent="Retrieving Coinbase data...";
   results.replaceChildren();
 
   try {
@@ -315,8 +309,7 @@ el("scan").onclick=()=>run(
   "scan","status","results",
   async(status,results)=>{
     const response=await fetch(
-      API+"/products",
-      {cache:"no-store"}
+      API+"/products",{cache:"no-store"}
     );
 
     if(!response.ok) {
@@ -328,9 +321,7 @@ el("scan").onclick=()=>run(
     const data=await response.json();
 
     if(!Array.isArray(data)) {
-      throw new Error(
-        "Invalid products response"
-      );
+      throw new Error("Invalid products response");
     }
 
     const pairs=data.filter(p=>
@@ -342,9 +333,7 @@ el("scan").onclick=()=>run(
       !p.auction_mode
     );
 
-    pairs.sort((a,b)=>
-      a.id.localeCompare(b.id)
-    );
+    pairs.sort((a,b)=>a.id.localeCompare(b.id));
 
     status.textContent=
       "Found "+pairs.length+
@@ -365,14 +354,10 @@ el("candles").onclick=()=>run(
   async(status,results)=>{
     const now=Math.floor(Date.now()/1000);
 
-    const raw=await fetchCandles(
-      "BTC-USD",M15
-    );
+    const raw=await fetchCandles("BTC-USD",M15);
 
     const fifteen=normalize(
-      raw,
-      M15,
-      -Infinity,
+      raw,M15,-Infinity,
       Math.floor(now/M15)*M15
     );
 
@@ -385,24 +370,15 @@ el("candles").onclick=()=>run(
     for(const first of fifteen) {
       if(first.time%M30!==0) continue;
 
-      const second=byTime.get(
-        first.time+M15
-      );
+      const second=byTime.get(first.time+M15);
 
-      if(
-        !second ||
-        first.time+M30>now
-      ) continue;
+      if(!second || first.time+M30>now) continue;
 
       candles.push({
         time:first.time,
         open:first.open,
-        high:Math.max(
-          first.high,second.high
-        ),
-        low:Math.min(
-          first.low,second.low
-        ),
+        high:Math.max(first.high,second.high),
+        low:Math.min(first.low,second.low),
         close:second.close,
         volume:first.volume+second.volume
       });
@@ -422,8 +398,7 @@ el("candles").onclick=()=>run(
     )/20;
 
     const relativeVolume=averageVolume>0
-      ?latest.volume/averageVolume
-      :null;
+      ?latest.volume/averageVolume:null;
 
     const resistance=Math.max(
       ...previous20.map(c=>c.high)
@@ -438,8 +413,7 @@ el("candles").onclick=()=>run(
     );
 
     const compressionRatio=referenceRange>0
-      ?recentRange/referenceRange
-      :null;
+      ?recentRange/referenceRange:null;
 
     const missing=gapCount(candles,M30);
 
@@ -462,33 +436,25 @@ el("candles").onclick=()=>run(
     const fields=[
       ["Market","BTC-USD"],
       ["Candle start",
-        new Date(latest.time*1000)
-          .toLocaleString()],
+        new Date(latest.time*1000).toLocaleString()],
       ["Open",money(latest.open)],
       ["High",money(latest.high)],
       ["Low",money(latest.low)],
       ["Close",money(latest.close)],
-      ["Volume",
-        latest.volume.toFixed(4)+" BTC"],
+      ["Volume",latest.volume.toFixed(4)+" BTC"],
       ["20-candle average",
         averageVolume.toFixed(4)+" BTC"],
       ["Relative volume",
         relativeVolume===null
-          ?"N/A"
-          :relativeVolume.toFixed(2)+"x"],
+          ?"N/A":relativeVolume.toFixed(2)+"x"],
       ["Volume signal",
-        relativeVolume===null
-          ?"Unavailable"
-          :relativeVolume>=1.5
-            ?"ELEVATED VOLUME"
-            :"Normal volume"],
-      ["20-candle resistance",
-        money(resistance)],
+        relativeVolume===null?"Unavailable":
+        relativeVolume>=1.5
+          ?"ELEVATED VOLUME":"Normal volume"],
+      ["20-candle resistance",money(resistance)],
       ["Distance to resistance",
-        (
-          (latest.close-resistance)/
-          resistance*100
-        ).toFixed(2)+"%"],
+        ((latest.close-resistance)/
+          resistance*100).toFixed(2)+"%"],
       ["Breakout status",
         latest.close>resistance
           ?"CLOSED ABOVE RESISTANCE"
@@ -499,14 +465,12 @@ el("candles").onclick=()=>run(
         recentRange.toFixed(2)+"%"],
       ["Compression ratio",
         compressionRatio===null
-          ?"N/A"
-          :compressionRatio.toFixed(2)+"x"],
+          ?"N/A":compressionRatio.toFixed(2)+"x"],
       ["Compression signal",
-        compressionRatio===null
-          ?"Unavailable"
-          :compressionRatio<0.60
-            ?"COMPRESSION DETECTED"
-            :"No compression detected"]
+        compressionRatio===null?"Unavailable":
+        compressionRatio<0.60
+          ?"COMPRESSION DETECTED"
+          :"No compression detected"]
     ];
 
     for(const field of fields) {
@@ -514,80 +478,55 @@ el("candles").onclick=()=>run(
     }
 
     const heading=document.createElement("h2");
-    heading.textContent=
-      "Candle Integrity Diagnostics";
+    heading.textContent="Candle Integrity Diagnostics";
     results.append(heading);
 
-    detail(
-      results,"Fetched at",
-      new Date(now*1000).toLocaleString()
-    );
+    detail(results,"Fetched at",
+      new Date(now*1000).toLocaleString());
 
-    detail(
-      results,
-      "Expected latest candle start",
-      new Date(expected*1000).toLocaleString()
-    );
+    detail(results,"Expected latest candle start",
+      new Date(expected*1000).toLocaleString());
 
-    detail(
-      results,"Freshness",
+    detail(results,"Freshness",
       fresh?"PASS":"WARNING",
-      fresh?"good":"warning"
-    );
+      fresh?"good":"warning");
 
-    detail(
-      results,"Continuity",
+    detail(results,"Continuity",
       missing===0?"PASS":"WARNING",
-      missing===0?"good":"warning"
-    );
+      missing===0?"good":"warning");
 
-    detail(
-      results,
-      "Missing 30-minute intervals",
-      missing
-    );
+    detail(results,"Missing 30-minute intervals",missing);
 
     let gapGroups=0;
 
     for(let i=1;i<candles.length;i++) {
-      if(
-        candles[i].time-
-        candles[i-1].time>M30
-      ) gapGroups++;
+      if(candles[i].time-candles[i-1].time>M30) {
+        gapGroups++;
+      }
     }
 
-    detail(
-      results,"Missing-interval gaps",
-      gapGroups
-    );
+    detail(results,"Missing-interval gaps",gapGroups);
 
-    detail(
-      results,"Signal usability",
+    detail(results,"Signal usability",
       valid
         ?"Data checks passed; strategy not yet validated"
         :"DO NOT USE — incomplete or stale data",
-      valid?"good":"warning"
-    );
+      valid?"good":"warning");
   }
 );
 
 // DAILY HISTORY RETRIEVAL
 
-async function dailyHistory(today,days,status) {
+async function dailyHistory(endTime,days,status) {
   const all=[];
+  const first=endTime-days*DAY;
 
-  const first=today-days*DAY;
-
-  // Use batches below Coinbase's 300-candle limit.
   for(
     let start=first;
-    start<today;
+    start<endTime;
     start+=200*DAY
   ) {
-    const end=Math.min(
-      start+200*DAY,
-      today
-    );
+    const end=Math.min(start+200*DAY,endTime);
 
     const processed=Math.round(
       (end-first)/DAY
@@ -614,15 +553,91 @@ async function dailyHistory(today,days,status) {
     .sort((a,b)=>a.time-b.time);
 }
 
-// DAILY 50 EMA VERIFICATION VERSION 2
+function historyValid(candles,endTime,days) {
+  return (
+    candles.length===days &&
+    candles[0]?.time===endTime-days*DAY &&
+    candles[candles.length-1]?.time===endTime-DAY &&
+    gapCount(candles,DAY)===0
+  );
+}
+
+function emaDiagnostics(results,candles) {
+  const closes=candles.map(c=>c.close);
+  const latest=candles[candles.length-1];
+
+  const ema180=ema(closes.slice(-180));
+  const ema400=ema(closes.slice(-400));
+  const ema800=ema(closes);
+  const firstSeed800=ema(closes,50,"first");
+
+  const previousEma=ema(closes.slice(0,-1));
+
+  const above=latest.close>ema800;
+  const rising=ema800>previousEma;
+
+  detail(results,"Comparison candle (UTC)",
+    iso(latest.time));
+
+  detail(results,"Completed daily close",
+    money(latest.close));
+
+  detail(results,"50 EMA — 180 candles, SMA seed",
+    money(ema180));
+
+  detail(results,"50 EMA — 400 candles, SMA seed",
+    money(ema400));
+
+  detail(results,"50 EMA — 800 candles, SMA seed",
+    money(ema800));
+
+  detail(results,"50 EMA — 800 candles, first-close seed",
+    money(firstSeed800));
+
+  detail(results,"400 vs 800 SMA-seed difference",
+    money(Math.abs(ema400-ema800)));
+
+  detail(results,"800-day seed-method difference",
+    money(Math.abs(firstSeed800-ema800)));
+
+  const previous=candles[candles.length-2];
+
+  detail(results,"Previous completed UTC day",
+    iso(previous.time));
+
+  detail(results,"Previous daily close",
+    money(previous.close));
+
+  detail(results,"Previous 50 EMA — 800 candles",
+    money(previousEma));
+
+  detail(results,"50 EMA slope",
+    rising?"Rising":"Flat or falling",
+    rising?"good":"warning");
+
+  detail(results,"Price vs 50 EMA",
+    above?"Above":"At or below",
+    above?"good":"warning");
+
+  detail(results,"Bullish daily trend filter",
+    above&&rising?"PASS":"NOT MET",
+    above&&rising?"good":"warning");
+
+  return {
+    ema800,
+    firstSeed800,
+    previousEma,
+    latest
+  };
+}
+
+// CURRENT DAILY EMA VERIFICATION
 
 el("daily").onclick=()=>run(
   "daily","dailyStatus","dailyResults",
   async(status,results)=>{
     const now=Math.floor(Date.now()/1000);
-
     const today=Math.floor(now/DAY)*DAY;
-
     const days=800;
 
     const candles=await dailyHistory(
@@ -630,210 +645,146 @@ el("daily").onclick=()=>run(
     );
 
     const expected=today-DAY;
+    const latest=candles[candles.length-1];
+    const missing=gapCount(candles,DAY);
 
-    const missing=gapCount(
-      candles,DAY
-    );
+    detail(results,"Daily candles returned",
+      candles.length+" / "+days);
 
-    const latest=candles[
-      candles.length-1
-    ];
+    detail(results,"Expected latest UTC day",
+      iso(expected));
 
-    const valid=
-      candles.length===days &&
-      candles[0].time===today-days*DAY &&
-      latest.time===expected &&
-      missing===0;
+    detail(results,"Actual latest UTC day",
+      latest?iso(latest.time):"None");
 
-    detail(
-      results,"Daily candles returned",
-      candles.length+" / "+days
-    );
+    detail(results,"Missing daily intervals",missing);
 
-    detail(
-      results,"Expected latest UTC day",
-      iso(expected)
-    );
+    detail(results,"Freshness",
+      latest?.time===expected?"PASS":"WARNING");
 
-    detail(
-      results,"Actual latest UTC day",
-      latest?iso(latest.time):"None"
-    );
-
-    detail(
-      results,"Missing daily intervals",
-      missing
-    );
-
-    detail(
-      results,"Freshness",
-      latest&&latest.time===expected
-        ?"PASS":"WARNING"
-    );
-
-    if(!valid) {
+    if(!historyValid(candles,today,days)) {
       status.className="status warning";
-
       status.textContent=
-        "DAILY DATA INTEGRITY WARNING — "+
-        "comparison withheld.";
-
-      detail(
-        results,"Action",
+        "DAILY DATA INTEGRITY WARNING — comparison withheld.";
+      detail(results,"Action",
         "Check history completeness before using EMA",
-        "warning"
-      );
-
+        "warning");
       return;
     }
 
-    const closes=candles.map(
-      c=>c.close
+    status.className="status good";
+    status.textContent=
+      "800-DAY HISTORY PASSED — EMA diagnostics complete.";
+
+    const diagnostic=emaDiagnostics(results,candles);
+
+    const referenceText=el("referenceEma").value.trim();
+    const reference=Number(referenceText);
+
+    if(
+      referenceText!=="" &&
+      Number.isFinite(reference) &&
+      reference>0
+    ) {
+      detail(results,"Coinbase chart EMA (manual reference)",
+        money(reference));
+
+      detail(results,"Difference vs 800-day EMA",
+        money(Math.abs(reference-diagnostic.ema800)));
+
+      detail(results,"Difference vs first-close seed",
+        money(Math.abs(reference-diagnostic.firstSeed800)));
+    } else {
+      detail(results,"Coinbase chart reference",
+        "Not entered");
+    }
+
+    detail(results,"Verification note",
+      "Compare values on the same completed UTC daily candle.");
+
+    detail(results,"Interpretation",
+      "These comparisons do not prove equivalence with Coinbase's chart indicator.");
+
+    detail(results,"Signal usability",
+      "Diagnostic only — strategy not yet validated");
+  }
+);
+
+// HISTORICAL 50 EMA VERIFICATION — VERSION 3
+
+el("historical").onclick=()=>run(
+  "historical","historicalStatus","historicalResults",
+  async(status,results)=>{
+    const dateText=el("historicalDate").value;
+
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      throw new Error("Enter a valid historical date.");
+    }
+
+    const targetMs=Date.parse(dateText+"T00:00:00Z");
+
+    if(
+      !Number.isFinite(targetMs) ||
+      new Date(targetMs).toISOString().slice(0,10)!==dateText
+    ) {
+      throw new Error("Invalid UTC date.");
+    }
+
+    const target=Math.floor(targetMs/1000);
+    const now=Math.floor(Date.now()/1000);
+    const today=Math.floor(now/DAY)*DAY;
+
+    if(target>=today) {
+      throw new Error(
+        "Select a completed UTC daily candle before today."
+      );
+    }
+
+    const days=800;
+    const endTime=target+DAY;
+
+    const candles=await dailyHistory(
+      endTime,days,status
     );
 
-    // Standard SMA-seeded EMA with
-    // different historical lookbacks.
+    const latest=candles[candles.length-1];
+    const missing=gapCount(candles,DAY);
 
-    const ema180=ema(
-      closes.slice(-180)
-    );
+    detail(results,"Selected UTC date",dateText);
 
-    const ema400=ema(
-      closes.slice(-400)
-    );
+    detail(results,"Daily candles returned",
+      candles.length+" / "+days);
 
-    const ema800=ema(closes);
+    detail(results,"Expected historical candle",
+      iso(target));
 
-    // Alternative initialization:
-    // begin EMA at the first closing price.
+    detail(results,"Actual historical candle",
+      latest?iso(latest.time):"None");
 
-    const firstSeed800=ema(
-      closes,50,"first"
-    );
+    detail(results,"Missing daily intervals",missing);
 
-    // Compare consecutive completed daily EMAs.
+    detail(results,"Historical data freshness",
+      latest?.time===target?"PASS":"WARNING");
 
-    const previousEma=ema(
-      closes.slice(0,-1)
-    );
+    if(!historyValid(candles,endTime,days)) {
+      status.className="status warning";
+      status.textContent=
+        "HISTORICAL DATA INTEGRITY WARNING — comparison withheld.";
 
-const previousCandle = candles[candles.length - 2];
-const previousClose = previousCandle.close;
-const previousDay = iso(previousCandle.time);
-
-    const above=latest.close>ema800;
-    const rising=ema800>previousEma;
+      detail(results,"Action",
+        "Historical candle history is incomplete. Do not use the calculated EMA.",
+        "warning");
+      return;
+    }
 
     status.className="status good";
-
     status.textContent=
-      "800-DAY HISTORY PASSED — "+
-      "EMA diagnostics complete.";
+      "HISTORICAL DATA INTEGRITY PASSED — EMA diagnostics complete.";
 
-    detail(
-      results,"Comparison candle (UTC)",
-      iso(latest.time)
-    );
-
-    detail(
-      results,"Completed daily close",
-      money(latest.close)
-    );
-
-    detail(
-      results,
-      "50 EMA — 180 candles, SMA seed",
-      money(ema180)
-    );
-
-    detail(
-      results,
-      "50 EMA — 400 candles, SMA seed",
-      money(ema400)
-    );
-
-    detail(
-      results,
-      "50 EMA — 800 candles, SMA seed",
-      money(ema800)
-    );
-
-    detail(
-      results,
-      "50 EMA — 800 candles, first-close seed",
-      money(firstSeed800)
-    );
-
-    detail(
-      results,
-      "400 vs 800 SMA-seed difference",
-      money(Math.abs(ema400-ema800))
-    );
-
-    detail(
-      results,
-      "800-day seed-method difference",
-      money(Math.abs(firstSeed800-ema800))
-    );
-
-detail(
-  results,
-  "Previous completed UTC day",
-  previousDay
-);
-
-detail(
-  results,
-  "Previous daily close",
-  money(previousClose)
-);
-
-detail(
-  results,
-  "Previous 50 EMA — 800 candles",
-  money(previousEma)
-);
-
-detail(
-  results,
-  "Coinbase November 6 close",
-  money(75731.04)
-);
-
-detail(
-  results,
-  "Coinbase November 6 EMA",
-  money(79707.74)
-);
-
-detail(
-  results,
-  "Previous-day EMA difference",
-  money(Math.abs(previousEma - 79707.74))
-);
-
-    detail(
-      results,"50 EMA slope",
-      rising?"Rising":"Flat or falling",
-      rising?"good":"warning"
-    );
-
-    detail(
-      results,"Price vs 50 EMA",
-      above?"Above":"At or below",
-      above?"good":"warning"
-    );
-
-    detail(
-      results,"Bullish daily trend filter",
-      above&&rising?"PASS":"NOT MET",
-      above&&rising?"good":"warning"
-    );
-
-    // Optional independent chart comparison.
+    const diagnostic=emaDiagnostics(results,candles);
 
     const referenceText=
-      el("referenceEma").value.trim();
+      el("historicalReference").value.trim();
 
     const reference=Number(referenceText);
 
@@ -842,45 +793,58 @@ detail(
       Number.isFinite(reference) &&
       reference>0
     ) {
-      detail(
-        results,
-        "Coinbase chart EMA (manual reference)",
-        money(reference)
-      );
+      const difference=
+        diagnostic.ema800-reference;
 
-      detail(
-        results,
-        "Difference vs 800-day EMA",
-        money(Math.abs(reference-ema800))
-      );
+      const absolute=Math.abs(difference);
 
-      detail(
-        results,
-        "Difference vs first-close seed",
-        money(Math.abs(reference-firstSeed800))
-      );
+      const percentage=
+        absolute/reference*100;
+
+      detail(results,"Coinbase historical chart EMA",
+        money(reference));
+
+      detail(results,"SEREN historical 50 EMA",
+        money(diagnostic.ema800));
+
+      detail(results,"Absolute EMA difference",
+        money(absolute));
+
+      detail(results,"Percentage EMA difference",
+        percentage.toFixed(4)+"%");
+
+      detail(results,"SEREN relative to Coinbase",
+        difference>0
+          ?"Higher by "+money(absolute)
+          :difference<0
+            ?"Lower by "+money(absolute)
+            :"Exact match at displayed precision");
+
+      detail(results,"Difference vs first-close seed",
+        money(Math.abs(
+          reference-diagnostic.firstSeed800
+        )));
+
+      const tolerance=0.01;
+
+      detail(results,"Displayed-value comparison",
+        absolute<=tolerance
+          ?"MATCH WITHIN $0.01"
+          :"DIFFERENCE DETECTED — investigate chart settings",
+        absolute<=tolerance?"good":"warning");
     } else {
-      detail(
-        results,
-        "Coinbase chart reference",
-        "Not entered"
-      );
+      detail(results,"Coinbase chart reference",
+        "Not entered");
     }
 
-    detail(
-      results,"Verification note",
-      "Compare values on the same completed UTC daily candle."
-    );
+    detail(results,"Historical verification note",
+      "The EMA uses only candles ending on the selected UTC date. No future candles are included.");
 
-    detail(
-      results,"Interpretation",
-      "These comparisons do not prove equivalence with Coinbase's chart indicator."
-    );
+    detail(results,"Chart comparison caution",
+      "Confirm the Coinbase chart date, market, timeframe, and indicator settings. A difference does not by itself identify its cause.");
 
-    detail(
-      results,"Signal usability",
-      "Diagnostic only — strategy not yet validated"
-    );
+    detail(results,"Signal usability",
+      "Diagnostic only — not a validated trading signal");
   }
 );
 </script>
