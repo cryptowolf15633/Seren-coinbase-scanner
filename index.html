@@ -6,300 +6,202 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEREN | Coinbase Scanner</title>
 <style>
-  body {
-    background: #09151d;
-    color: #e7f7f7;
-    font-family: system-ui, sans-serif;
-    padding: 24px;
-    max-width: 700px;
-    margin: auto;
-  }
-  h1 { color: #00f0e8; margin-bottom: 4px; }
-  h2 { color: #00f0e8; font-size: 19px; }
-  button {
-    background: #00f0e8;
-    color: #09151d;
-    border: 0;
-    border-radius: 8px;
-    padding: 14px 18px;
-    font-weight: bold;
-    font-size: 16px;
-    margin: 8px 8px 8px 0;
-    cursor: pointer;
-  }
-  section {
-    border: 1px solid #26424a;
-    border-radius: 12px;
-    padding: 16px;
-    margin-top: 20px;
-  }
-  .status { margin: 14px 0; }
-  li { padding: 4px; }
-  .muted { color: #a9c4c8; }
+  body { background:#09151d; color:#e7f7f7; font-family:system-ui,sans-serif; padding:24px; max-width:700px; margin:auto; }
+  h1 { color:#00f0e8; margin-bottom:4px; }
+  h2 { color:#00f0e8; font-size:19px; }
+  button { background:#00f0e8; color:#09151d; border:0; border-radius:8px; padding:14px 18px; font-weight:bold; font-size:16px; margin:8px 8px 8px 0; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:wait; }
+  section { border:1px solid #26424a; border-radius:12px; padding:16px; margin-top:20px; }
+  .status { margin:14px 0; }
+  li { padding:4px; }
+  .muted { color:#a9c4c8; }
+  .good { color:#65dec3; }
+  .warning { color:#ffca79; }
+  .error { color:#ff9e9e; }
 </style>
 </head>
 <body>
-
 <h1>SEREN</h1>
 <p class="muted">Coinbase USD Market Scanner</p>
-
 <section>
   <h2>Market Discovery</h2>
   <button id="scan">Scan Coinbase USD Pairs</button>
   <div id="status" class="status">Ready to scan.</div>
   <ul id="results"></ul>
 </section>
-
 <section>
   <h2>BTC-USD Candle Test</h2>
-  <p class="muted">
-    Builds completed 30-minute candles from Coinbase
-    15-minute historical data.
-  </p>
+  <p class="muted">Builds completed 30-minute candles from Coinbase 15-minute historical data.</p>
   <button id="candles">Test BTC Candles</button>
-  <div id="candleStatus" class="status">
-    Ready to retrieve candles.
-  </div>
+  <div id="candleStatus" class="status">Ready to retrieve candles.</div>
   <div id="candleResults"></div>
 </section>
-
 <script>
 const API = "https://api.exchange.coinbase.com";
+const INTERVAL_15 = 900;
+const INTERVAL_30 = 1800;
+
+function addDetail(parent, label, value, className = "") {
+  const p = document.createElement("p");
+  if (className) p.className = className;
+  const strong = document.createElement("strong");
+  strong.textContent = label + ": ";
+  p.append(strong, document.createTextNode(String(value)));
+  parent.appendChild(p);
+}
+
+function auditContinuity(candles, now) {
+  const missing = [];
+  for (let i = 1; i < candles.length; i++) {
+    const gap = candles[i].time - candles[i - 1].time;
+    if (gap > INTERVAL_30) {
+      const count = Math.round(gap / INTERVAL_30) - 1;
+      missing.push({ after: candles[i - 1].time, before: candles[i].time, count });
+    }
+  }
+  const expectedLatestStart = Math.floor(now / INTERVAL_30) * INTERVAL_30 - INTERVAL_30;
+  const latestStart = candles[candles.length - 1].time;
+  const intervalsBehind = Math.max(0, Math.round((expectedLatestStart - latestStart) / INTERVAL_30));
+  return {
+    missing,
+    missingCount: missing.reduce((sum, item) => sum + item.count, 0),
+    expectedLatestStart,
+    intervalsBehind,
+    isFresh: intervalsBehind === 0,
+    isContinuous: missing.length === 0
+  };
+}
 
 document.getElementById("scan").onclick = async () => {
   const status = document.getElementById("status");
   const results = document.getElementById("results");
-
+  const button = document.getElementById("scan");
+  button.disabled = true;
   status.textContent = "Connecting to Coinbase...";
   results.replaceChildren();
-
   try {
-    const response = await fetch(
-      API + "/products",
-      { cache: "no-store" }
-    );
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
-    }
-
+    const response = await fetch(API + "/products", { cache:"no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
     const products = await response.json();
-
+    if (!Array.isArray(products)) throw new Error("Unexpected products response");
     const usdPairs = products.filter(p =>
-      p.quote_currency === "USD" &&
-      p.status === "online" &&
-      !p.trading_disabled &&
-      !p.cancel_only &&
-      !p.limit_only &&
-      !p.auction_mode
+      p.quote_currency === "USD" && p.status === "online" &&
+      !p.trading_disabled && !p.cancel_only && !p.limit_only && !p.auction_mode
     );
-
-    usdPairs.sort((a, b) =>
-      a.id.localeCompare(b.id)
-    );
-
-    status.textContent =
-      "Found " + usdPairs.length +
-      " active USD trading pairs.";
-
+    usdPairs.sort((a,b) => a.id.localeCompare(b.id));
+    status.textContent = "Found " + usdPairs.length + " active USD trading pairs.";
     for (const pair of usdPairs) {
       const li = document.createElement("li");
       li.textContent = pair.id;
       results.appendChild(li);
     }
-
   } catch (error) {
-    status.textContent =
-      "TEST FAILED: " + error.message;
-  }
+    status.textContent = "TEST FAILED: " + error.message;
+  } finally { button.disabled = false; }
 };
 
 document.getElementById("candles").onclick = async () => {
   const status = document.getElementById("candleStatus");
   const results = document.getElementById("candleResults");
-
+  const button = document.getElementById("candles");
+  button.disabled = true;
   status.textContent = "Retrieving BTC-USD candles...";
   results.replaceChildren();
-
   try {
-    const response = await fetch(
-      API + "/products/BTC-USD/candles?granularity=900",
-      { cache: "no-store" }
-    );
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
-    }
-
+    const response = await fetch(API + "/products/BTC-USD/candles?granularity=900", { cache:"no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
     const raw = await response.json();
-
-    if (!Array.isArray(raw)) {
-      throw new Error("Unexpected candle response");
-    }
-
+    if (!Array.isArray(raw)) throw new Error("Unexpected candle response");
     const now = Math.floor(Date.now() / 1000);
-    const completed15 = raw
-      .filter(c =>
-        Array.isArray(c) &&
-        c.length >= 6 &&
-        c[0] + 900 <= now &&
-        c.slice(0, 6).every(Number.isFinite)
-      )
-      .sort((a, b) => a[0] - b[0]);
-
-    const byTime = new Map(
-      completed15.map(c => [c[0], c])
-    );
-
+    const completed15 = raw.filter(c =>
+      Array.isArray(c) && c.length >= 6 &&
+      c[0] + INTERVAL_15 <= now && c.slice(0,6).every(Number.isFinite)
+    ).sort((a,b) => a[0] - b[0]);
+    const byTime = new Map(completed15.map(c => [c[0], c]));
     const candles30 = [];
-
     for (const [time, first] of byTime) {
-      if (time % 1800 !== 0) continue;
-
-      const second = byTime.get(time + 900);
-      if (!second) continue;
-      if (time + 1800 > now) continue;
-
+      if (time % INTERVAL_30 !== 0) continue;
+      const second = byTime.get(time + INTERVAL_15);
+      if (!second || time + INTERVAL_30 > now) continue;
       candles30.push({
         time,
-        low: Math.min(first[1], second[1]),
-        high: Math.max(first[2], second[2]),
-        open: first[3],
-        close: second[4],
-        volume: first[5] + second[5]
+        low:Math.min(first[1],second[1]), high:Math.max(first[2],second[2]),
+        open:first[3], close:second[4], volume:first[5]+second[5]
       });
     }
-
-    candles30.sort((a, b) => a.time - b.time);
-
-    if (!candles30.length) {
-      throw new Error("No complete 30-minute candles found");
-    }
-
-    const latest = candles30[candles30.length - 1];
-
-    // Compare the latest candle with the preceding 20.
-    const previous20 = candles30.slice(-21, -1);
-
-    if (previous20.length < 20) {
-      throw new Error("Not enough candles for volume analysis");
-    }
-
-    const averageVolume =
-      previous20.reduce((sum, c) => sum + c.volume, 0) / 20;
-
-    const relativeVolume =
-      averageVolume > 0
-        ? latest.volume / averageVolume
-        : null;
-
-    const volumeSignal =
-      relativeVolume === null
-        ? "Unavailable"
-        : relativeVolume >= 1.5
-          ? "ELEVATED VOLUME"
-          : "Normal volume";
-
-    // Resistance: highest high of the previous 20 candles.
-    const resistance = Math.max(
-      ...previous20.map(c => c.high)
-    );
-
-    // Percentage distance from resistance.
-    // Negative means below; positive means above.
-    const distanceToResistance =
-      ((latest.close - resistance) / resistance) * 100;
-
-    // Require a close above resistance for a breakout.
-    const breakoutStatus =
-      latest.close > resistance
-        ? "CLOSED ABOVE RESISTANCE"
-        : "No confirmed breakout";
-
-    // Measure the trading range of a candle group.
+    candles30.sort((a,b) => a.time - b.time);
+    if (!candles30.length) throw new Error("No complete 30-minute candles found");
+    const latest = candles30[candles30.length-1];
+    const audit = auditContinuity(candles30, now);
+    const previous20 = candles30.slice(-21,-1);
+    if (previous20.length < 20) throw new Error("Not enough candles for volume analysis");
+    const averageVolume = previous20.reduce((sum,c) => sum+c.volume,0)/20;
+    const relativeVolume = averageVolume > 0 ? latest.volume/averageVolume : null;
+    const volumeSignal = relativeVolume === null ? "Unavailable" : relativeVolume >= 1.5 ? "ELEVATED VOLUME" : "Normal volume";
+    const resistance = Math.max(...previous20.map(c => c.high));
+    const distanceToResistance = ((latest.close-resistance)/resistance)*100;
+    const breakoutStatus = latest.close > resistance ? "CLOSED ABOVE RESISTANCE" : "No confirmed breakout";
     function rangePercent(group) {
       const highest = Math.max(...group.map(c => c.high));
       const lowest = Math.min(...group.map(c => c.low));
-
-      const averageClose =
-        group.reduce((sum, c) => sum + c.close, 0)
-        / group.length;
-
-      return ((highest - lowest) / averageClose) * 100;
+      const averageClose = group.reduce((sum,c) => sum+c.close,0)/group.length;
+      return ((highest-lowest)/averageClose)*100;
     }
-
-    // Compare non-overlapping groups of closed candles.
-    const reference10 = candles30.slice(-16, -6);
-    const recent5 = candles30.slice(-6, -1);
-
-    if (reference10.length !== 10 || recent5.length !== 5) {
-      throw new Error("Not enough candles for compression analysis");
-    }
-
+    const reference10 = candles30.slice(-16,-6);
+    const recent5 = candles30.slice(-6,-1);
+    if (reference10.length !== 10 || recent5.length !== 5) throw new Error("Not enough candles for compression analysis");
     const referenceRange = rangePercent(reference10);
     const recentRange = rangePercent(recent5);
+    const compressionRatio = referenceRange > 0 ? recentRange/referenceRange : null;
+    const compressionSignal = compressionRatio === null ? "Unavailable" : compressionRatio < .60 ? "COMPRESSION DETECTED" : "No compression detected";
 
-    const compressionRatio =
-      referenceRange > 0
-        ? recentRange / referenceRange
-        : null;
+    const reliable = audit.isFresh && audit.isContinuous;
+    status.textContent = "Built " + candles30.length + " completed 30-minute candles. " +
+      (reliable ? "DATA INTEGRITY PASSED." : "DATA INTEGRITY WARNING — review before using signals.");
+    status.className = "status " + (reliable ? "good" : "warning");
 
-    const compressionSignal =
-      compressionRatio === null
-        ? "Unavailable"
-        : compressionRatio < 0.60
-          ? "COMPRESSION DETECTED"
-          : "No compression detected";
+    addDetail(results,"Market","BTC-USD");
+    addDetail(results,"Candle start",new Date(latest.time*1000).toLocaleString());
+    addDetail(results,"Open","$"+latest.open.toLocaleString());
+    addDetail(results,"High","$"+latest.high.toLocaleString());
+    addDetail(results,"Low","$"+latest.low.toLocaleString());
+    addDetail(results,"Close","$"+latest.close.toLocaleString());
+    addDetail(results,"Volume",latest.volume.toFixed(4)+" BTC");
+    addDetail(results,"20-candle average",averageVolume.toFixed(4)+" BTC");
+    addDetail(results,"Relative volume",relativeVolume===null ? "N/A" : relativeVolume.toFixed(2)+"x");
+    addDetail(results,"Volume signal",volumeSignal);
+    addDetail(results,"20-candle resistance","$"+resistance.toLocaleString());
+    addDetail(results,"Distance to resistance",distanceToResistance.toFixed(2)+"%");
+    addDetail(results,"Breakout status",breakoutStatus);
+    addDetail(results,"Reference 10-candle range",referenceRange.toFixed(2)+"%");
+    addDetail(results,"Recent 5-candle range",recentRange.toFixed(2)+"%");
+    addDetail(results,"Compression ratio",compressionRatio===null ? "N/A" : compressionRatio.toFixed(2)+"x");
+    addDetail(results,"Compression signal",compressionSignal);
 
-    status.textContent =
-      "SUCCESS: Built " + candles30.length +
-      " completed 30-minute candles.";
-
-    const details = [
-      ["Market", "BTC-USD"],
-      ["Candle start",
-        new Date(latest.time * 1000).toLocaleString()],
-      ["Open", "$" + latest.open.toLocaleString()],
-      ["High", "$" + latest.high.toLocaleString()],
-      ["Low", "$" + latest.low.toLocaleString()],
-      ["Close", "$" + latest.close.toLocaleString()],
-
-      ["Volume", latest.volume.toFixed(4) + " BTC"],
-      ["20-candle average", averageVolume.toFixed(4) + " BTC"],
-      ["Relative volume", relativeVolume === null
-        ? "N/A" : relativeVolume.toFixed(2) + "x"],
- 
-      ["Volume signal", volumeSignal],
-      ["20-candle resistance",
-        "$" + resistance.toLocaleString()],
-      ["Distance to resistance",
-        distanceToResistance.toFixed(2) + "%"],
-
-["Breakout status", breakoutStatus],
-["Reference 10-candle range", referenceRange.toFixed(2) + "%"],
-["Recent 5-candle range", recentRange.toFixed(2) + "%"],
-["Compression ratio",
-  compressionRatio === null
-    ? "N/A"
-    : compressionRatio.toFixed(2) + "x"],
-["Compression signal", compressionSignal]
-
-
-
-    ];
-
-    for (const [label, value] of details) {
-      const p = document.createElement("p");
-      const strong = document.createElement("strong");
-      strong.textContent = label + ": ";
-      p.append(strong, document.createTextNode(value));
-      results.appendChild(p);
+    const heading = document.createElement("h2");
+    heading.textContent = "Candle Integrity Diagnostics";
+    results.appendChild(heading);
+    addDetail(results,"Fetched at",new Date(now*1000).toLocaleString());
+    addDetail(results,"Expected latest candle start",new Date(audit.expectedLatestStart*1000).toLocaleString());
+    addDetail(results,"Freshness",audit.isFresh ? "PASS — latest completed interval present" : "WARNING — " + audit.intervalsBehind + " completed interval(s) behind",audit.isFresh ? "good" : "warning");
+    addDetail(results,"Continuity",audit.isContinuous ? "PASS — no missing intervals in returned range" : "WARNING — missing intervals detected",audit.isContinuous ? "good" : "warning");
+    addDetail(results,"Missing 30-minute intervals",audit.missingCount);
+    addDetail(results,"Missing-interval gaps",audit.missing.length);
+    if (audit.missing.length) {
+      const gaps = document.createElement("ul");
+      for (const gap of audit.missing.slice(0,10)) {
+        const li = document.createElement("li");
+        li.textContent = gap.count + " missing between " + new Date(gap.after*1000).toLocaleString() + " and " + new Date(gap.before*1000).toLocaleString();
+        gaps.appendChild(li);
+      }
+      results.appendChild(gaps);
+      if (audit.missing.length > 10) addDetail(results,"Additional gaps not shown",audit.missing.length-10);
     }
-
-  } catch (error) {
-    status.textContent =
-      "TEST FAILED: " + error.message;
-  }
+    addDetail(results,"Signal usability",reliable ? "Data checks passed; strategy not yet validated" : "DO NOT USE — incomplete or stale data",reliable ? "good" : "warning");
+  } catch(error) {
+    status.className = "status error";
+    status.textContent = "TEST FAILED: " + error.message;
+  } finally { button.disabled = false; }
 };
 </script>
 </body>
