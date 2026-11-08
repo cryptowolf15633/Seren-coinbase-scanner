@@ -717,6 +717,10 @@ el("daily").onclick=()=>run(
       closes.slice(0,-1)
     );
 
+const previousCandle = candles[candles.length - 2];
+const previousClose = previousCandle.close;
+const previousDay = iso(previousCandle.time);
+
     const above=latest.close>ema800;
     const rising=ema800>previousEma;
 
@@ -771,6 +775,42 @@ el("daily").onclick=()=>run(
       "800-day seed-method difference",
       money(Math.abs(firstSeed800-ema800))
     );
+
+detail(
+  results,
+  "Previous completed UTC day",
+  previousDay
+);
+
+detail(
+  results,
+  "Previous daily close",
+  money(previousClose)
+);
+
+detail(
+  results,
+  "Previous 50 EMA — 800 candles",
+  money(previousEma)
+);
+
+detail(
+  results,
+  "Coinbase November 6 close",
+  money(75731.04)
+);
+
+detail(
+  results,
+  "Coinbase November 6 EMA",
+  money(79707.74)
+);
+
+detail(
+  results,
+  "Previous-day EMA difference",
+  money(Math.abs(previousEma - 79707.74))
+);
 
     detail(
       results,"50 EMA slope",
