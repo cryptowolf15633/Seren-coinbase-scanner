@@ -6,310 +6,558 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEREN | Coinbase Scanner</title>
 <style>
- body { background:#09151d; color:#e7f7f7; font-family:system-ui,sans-serif; padding:24px; max-width:700px; margin:auto; }
- h1,h2 { color:#00f0e8; } h1 { margin-bottom:4px; } h2 { font-size:19px; }
- button { background:#00f0e8; color:#09151d; border:0; border-radius:8px; padding:14px 18px; font-weight:bold; font-size:16px; margin:8px 8px 8px 0; cursor:pointer; }
- button:disabled { opacity:.55; cursor:wait; }
- section { border:1px solid #26424a; border-radius:12px; padding:16px; margin-top:20px; }
- .status { margin:14px 0; } li { padding:4px; } .muted { color:#a9c4c8; }
- .good { color:#65dec3; } .warning { color:#ffca79; } .error { color:#ff9e9e; }
+body {
+  background:#09151d;
+  color:#e7f7f7;
+  font-family:system-ui,sans-serif;
+  padding:24px;
+  max-width:700px;
+  margin:auto;
+}
+h1,h2 { color:#00f0e8; }
+h1 { margin-bottom:4px; }
+h2 { font-size:19px; }
+button {
+  background:#00f0e8;
+  color:#09151d;
+  border:0;
+  border-radius:8px;
+  padding:14px 18px;
+  font-weight:bold;
+  font-size:16px;
+  margin:8px 8px 8px 0;
+  cursor:pointer;
+}
+button:disabled { opacity:.55; cursor:wait; }
+section {
+  border:1px solid #26424a;
+  border-radius:12px;
+  padding:16px;
+  margin-top:20px;
+}
+.status { margin:14px 0; }
+li { padding:4px; }
+.muted { color:#a9c4c8; }
+.good { color:#65dec3; }
+.warning { color:#ffca79; }
+.error { color:#ff9e9e; }
 </style>
 </head>
 <body>
+
 <h1>SEREN</h1>
 <p class="muted">Coinbase USD Market Scanner</p>
+
 <section>
- <h2>Market Discovery</h2>
- <button id="scan">Scan Coinbase USD Pairs</button>
- <div id="status" class="status">Ready to scan.</div><ul id="results"></ul>
+  <h2>Market Discovery</h2>
+  <button id="scan">Scan Coinbase USD Pairs</button>
+  <div id="status" class="status">Ready to scan.</div>
+  <ul id="results"></ul>
 </section>
+
 <section>
- <h2>BTC-USD Candle Test</h2>
- <p class="muted">Builds completed 30-minute candles from Coinbase 15-minute historical data.</p>
- <button id="candles">Test BTC Candles</button>
- <div id="candleStatus" class="status">Ready to retrieve candles.</div><div id="candleResults"></div>
+  <h2>BTC-USD Candle Test</h2>
+  <p class="muted">
+    Builds completed 30-minute candles from Coinbase
+    15-minute historical data.
+  </p>
+  <button id="candles">Test BTC Candles</button>
+  <div id="candleStatus" class="status">
+    Ready to retrieve candles.
+  </div>
+  <div id="candleResults"></div>
 </section>
+
 <section>
- <h2>Daily 50 EMA Trend Test</h2>
- <p class="muted">Uses completed UTC daily candles only. This is a trend diagnostic, not a trading signal.</p>
- <button id="daily">Test Daily Trend</button>
- <div id="dailyStatus" class="status">Ready to retrieve daily candles.</div><div id="dailyResults"></div>
+  <h2>Daily 50 EMA Verification</h2>
+  <p class="muted">
+    Compares a 180-day EMA against a longer-history EMA,
+    using completed UTC daily candles only.
+  </p>
+  <button id="daily">Verify Daily EMA</button>
+  <div id="dailyStatus" class="status">
+    Ready to retrieve daily candles.
+  </div>
+  <div id="dailyResults"></div>
 </section>
+
 <script>
 const API = "https://api.exchange.coinbase.com";
-const INTERVAL_15 = 900, INTERVAL_30 = 1800, DAY = 86400;
-const fmtMoney = n => "$" + n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const M15 = 900;
+const M30 = 1800;
+const DAY = 86400;
 
-function addDetail(parent,label,value,className="") {
- const p=document.createElement("p");
- if(className) p.className=className;
- const strong=document.createElement("strong");
- strong.textContent=label+": ";
- p.append(strong,document.createTextNode(String(value)));
- parent.appendChild(p);
+const money = n => "$" + n.toLocaleString(
+  undefined,
+  {minimumFractionDigits:2,maximumFractionDigits:2}
+);
+
+const date = t =>
+  new Date(t*1000).toISOString().slice(0,10);
+
+function detail(parent,label,value,cls="") {
+  const p = document.createElement("p");
+  if(cls) p.className = cls;
+  const strong = document.createElement("strong");
+  strong.textContent = label + ": ";
+  p.append(strong,document.createTextNode(String(value)));
+  parent.appendChild(p);
 }
 
-async function getCandles(product,granularity,params="") {
- const response=await fetch(API+"/products/"+product+"/candles?granularity="+granularity+params,{cache:"no-store"});
- if(!response.ok) throw new Error("HTTP "+response.status);
- const data=await response.json();
- if(!Array.isArray(data)) throw new Error("Unexpected candle response");
- return data;
+async function getCandles(product,granularity,start=null,end=null) {
+  const url = new URL(
+    API + "/products/" + product + "/candles"
+  );
+  url.searchParams.set("granularity",granularity);
+
+  if(start!==null)
+    url.searchParams.set(
+      "start",new Date(start*1000).toISOString()
+    );
+
+  if(end!==null)
+    url.searchParams.set(
+      "end",new Date(end*1000).toISOString()
+    );
+
+  const response = await fetch(
+    url.toString(),{cache:"no-store"}
+  );
+
+  if(!response.ok)
+    throw new Error("Coinbase HTTP " + response.status);
+
+  const raw = await response.json();
+
+  if(!Array.isArray(raw))
+    throw new Error("Unexpected candle response");
+
+  return raw;
 }
 
-function auditContinuity(candles,now) {
- const missing=[];
- for(let i=1;i<candles.length;i++) {
-  const gap=candles[i].time-candles[i-1].time;
-  if(gap>INTERVAL_30)
-   missing.push({after:candles[i-1].time,before:candles[i].time,count:Math.round(gap/INTERVAL_30)-1});
- }
- const expectedLatestStart=Math.floor(now/INTERVAL_30)*INTERVAL_30-INTERVAL_30;
- const latestStart=candles[candles.length-1].time;
- const intervalsBehind=Math.max(0,Math.round((expectedLatestStart-latestStart)/INTERVAL_30));
- return {
-  missing,
-  missingCount:missing.reduce((sum,g)=>sum+g.count,0),
-  expectedLatestStart,
-  intervalsBehind,
-  isFresh:intervalsBehind===0,
-  isContinuous:missing.length===0
- };
+function gaps(candles,interval) {
+  let missing = 0;
+
+  for(let i=1;i<candles.length;i++) {
+    const diff = candles[i].time-candles[i-1].time;
+    if(diff!==interval)
+      missing += Math.max(
+        1,Math.round(diff/interval)-1
+      );
+  }
+
+  return missing;
 }
 
+function ema(closes,period=50) {
+  if(closes.length<period)
+    throw new Error("Insufficient EMA history");
+
+  let value = closes.slice(0,period)
+    .reduce((a,b)=>a+b,0)/period;
+
+  const alpha = 2/(period+1);
+
+  for(let i=period;i<closes.length;i++)
+    value = alpha*closes[i]+(1-alpha)*value;
+
+  return value;
+}
+
+function completedDaily(raw,from,to) {
+  const map = new Map();
+
+  for(const c of raw) {
+    if(
+      !Array.isArray(c) ||
+      c.length<6 ||
+      !c.slice(0,6).every(Number.isFinite)
+    ) continue;
+
+    if(
+      c[0]%DAY ||
+      c[0]<from ||
+      c[0]>=to
+    ) continue;
+
+    map.set(c[0],{
+      time:c[0],
+      close:c[4]
+    });
+  }
+
+  return [...map.values()]
+    .sort((a,b)=>a.time-b.time);
+}
+
+async function dailyHistory(todayStart,days) {
+  const from = todayStart-days*DAY;
+  const all = [];
+
+  // Request 200 days per batch, below Coinbase's
+  // 300-candle limit per request.
+  for(
+    let start=from;
+    start<todayStart;
+    start+=200*DAY
+  ) {
+    const end = Math.min(
+      start+200*DAY,todayStart
+    );
+
+    const raw = await getCandles(
+      "BTC-USD",DAY,start,end
+    );
+
+    all.push(...completedDaily(raw,start,end));
+  }
+
+  const map = new Map(
+    all.map(c=>[c.time,c])
+  );
+
+  return [...map.values()]
+    .sort((a,b)=>a.time-b.time);
+}
+
+// MARKET DISCOVERY
 document.getElementById("scan").onclick=async()=>{
- const status=document.getElementById("status");
- const results=document.getElementById("results");
- const button=document.getElementById("scan");
- button.disabled=true;
- status.textContent="Connecting to Coinbase...";
- results.replaceChildren();
- try {
-  const response=await fetch(API+"/products",{cache:"no-store"});
-  if(!response.ok) throw new Error("HTTP "+response.status);
-  const products=await response.json();
-  if(!Array.isArray(products))throw new Error("Unexpected products response");
-  const usdPairs=products.filter(p=>
-   p.quote_currency==="USD"&&p.status==="online"&&
-   !p.trading_disabled&&!p.cancel_only&&!p.limit_only&&!p.auction_mode
-  );
-  usdPairs.sort((a,b)=>a.id.localeCompare(b.id));
-  status.textContent="Found "+usdPairs.length+" active USD trading pairs.";
-  for(const pair of usdPairs){
-   const li=document.createElement("li");
-   li.textContent=pair.id;
-   results.appendChild(li);
+  const button=document.getElementById("scan");
+  const status=document.getElementById("status");
+  const results=document.getElementById("results");
+
+  button.disabled=true;
+  status.textContent="Connecting to Coinbase...";
+  results.replaceChildren();
+
+  try {
+    const response=await fetch(
+      API+"/products",{cache:"no-store"}
+    );
+
+    if(!response.ok)
+      throw new Error("HTTP "+response.status);
+
+    const products=await response.json();
+
+    if(!Array.isArray(products))
+      throw new Error("Unexpected products response");
+
+    const pairs=products.filter(p=>
+      p.quote_currency==="USD" &&
+      p.status==="online" &&
+      !p.trading_disabled &&
+      !p.cancel_only &&
+      !p.limit_only &&
+      !p.auction_mode
+    );
+
+    pairs.sort((a,b)=>a.id.localeCompare(b.id));
+
+    status.textContent=
+      "Found "+pairs.length+" active USD trading pairs.";
+
+    for(const pair of pairs) {
+      const li=document.createElement("li");
+      li.textContent=pair.id;
+      results.appendChild(li);
+    }
+
+  } catch(e) {
+    status.textContent="TEST FAILED: "+e.message;
+  } finally {
+    button.disabled=false;
   }
- }catch(error){
-  status.textContent="TEST FAILED: "+error.message;
- }finally{button.disabled=false;}
 };
 
+// 30-MINUTE CANDLE ANALYSIS
 document.getElementById("candles").onclick=async()=>{
- const status=document.getElementById("candleStatus");
- const results=document.getElementById("candleResults");
- const button=document.getElementById("candles");
- button.disabled=true;
- status.className="status";
- status.textContent="Retrieving BTC-USD candles...";
- results.replaceChildren();
- try {
-  const raw=await getCandles("BTC-USD",900);
-  const now=Math.floor(Date.now()/1000);
-  const completed15=raw.filter(c=>
-   Array.isArray(c)&&c.length>=6&&
-   c[0]+INTERVAL_15<=now&&c.slice(0,6).every(Number.isFinite)
-  ).sort((a,b)=>a[0]-b[0]);
-  const byTime=new Map(completed15.map(c=>[c[0],c]));
-  const candles30=[];
-  for(const [time,first] of byTime){
-   if(time%INTERVAL_30!==0)continue;
-   const second=byTime.get(time+INTERVAL_15);
-   if(!second||time+INTERVAL_30>now)continue;
-   candles30.push({
-    time,
-    low:Math.min(first[1],second[1]),
-    high:Math.max(first[2],second[2]),
-    open:first[3],
-    close:second[4],
-    volume:first[5]+second[5]
-   });
+  const button=document.getElementById("candles");
+  const status=document.getElementById("candleStatus");
+  const results=document.getElementById("candleResults");
+
+  button.disabled=true;
+  status.className="status";
+  status.textContent="Retrieving BTC-USD candles...";
+  results.replaceChildren();
+
+  try {
+    const now=Math.floor(Date.now()/1000);
+    const raw=await getCandles("BTC-USD",M15);
+
+    const byTime=new Map(
+      raw.filter(c=>
+        Array.isArray(c) &&
+        c.length>=6 &&
+        c.slice(0,6).every(Number.isFinite) &&
+        c[0]+M15<=now
+      ).map(c=>[c[0],c])
+    );
+
+    const candles=[];
+
+    for(const [time,first] of byTime) {
+      if(time%M30!==0 || time+M30>now)
+        continue;
+
+      const second=byTime.get(time+M15);
+      if(!second) continue;
+
+      candles.push({
+        time,
+        low:Math.min(first[1],second[1]),
+        high:Math.max(first[2],second[2]),
+        open:first[3],
+        close:second[4],
+        volume:first[5]+second[5]
+      });
+    }
+
+    candles.sort((a,b)=>a.time-b.time);
+
+    if(candles.length<21)
+      throw new Error(
+        "Not enough completed 30-minute candles"
+      );
+
+    const latest=candles[candles.length-1];
+    const previous20=candles.slice(-21,-1);
+
+    const avg=previous20.reduce(
+      (sum,c)=>sum+c.volume,0
+    )/20;
+
+    const rv=avg>0?latest.volume/avg:null;
+
+    const resistance=Math.max(
+      ...previous20.map(c=>c.high)
+    );
+
+    function rangePercent(group) {
+      const high=Math.max(...group.map(c=>c.high));
+      const low=Math.min(...group.map(c=>c.low));
+      const average=group.reduce(
+        (sum,c)=>sum+c.close,0
+      )/group.length;
+
+      return (high-low)/average*100;
+    }
+
+    const refRange=rangePercent(
+      candles.slice(-16,-6)
+    );
+
+    const recentRange=rangePercent(
+      candles.slice(-6,-1)
+    );
+
+    const ratio=refRange>0
+      ?recentRange/refRange:null;
+
+    const missing=gaps(candles,M30);
+
+    const expected=
+      Math.floor(now/M30)*M30-M30;
+
+    const fresh=latest.time===expected;
+    const reliable=missing===0&&fresh;
+
+    status.className=
+      "status "+(reliable?"good":"warning");
+
+    status.textContent=
+      "Built "+candles.length+
+      " completed 30-minute candles. "+
+      (reliable
+        ?"DATA INTEGRITY PASSED."
+        :"DATA INTEGRITY WARNING.");
+
+    const fields=[
+      ["Market","BTC-USD"],
+      ["Candle start",
+        new Date(latest.time*1000).toLocaleString()],
+      ["Open",money(latest.open)],
+      ["High",money(latest.high)],
+      ["Low",money(latest.low)],
+      ["Close",money(latest.close)],
+      ["Volume",latest.volume.toFixed(4)+" BTC"],
+      ["20-candle average",avg.toFixed(4)+" BTC"],
+      ["Relative volume",
+        rv===null?"N/A":rv.toFixed(2)+"x"],
+      ["Volume signal",
+        rv===null?"Unavailable":
+        rv>=1.5?"ELEVATED VOLUME":"Normal volume"],
+      ["20-candle resistance",money(resistance)],
+      ["Distance to resistance",
+        ((latest.close-resistance)/resistance*100)
+          .toFixed(2)+"%"],
+      ["Breakout status",
+        latest.close>resistance
+          ?"CLOSED ABOVE RESISTANCE"
+          :"No confirmed breakout"],
+      ["Reference 10-candle range",
+        refRange.toFixed(2)+"%"],
+      ["Recent 5-candle range",
+        recentRange.toFixed(2)+"%"],
+      ["Compression ratio",
+        ratio===null?"N/A":ratio.toFixed(2)+"x"],
+      ["Compression signal",
+        ratio===null?"Unavailable":
+        ratio<0.6
+          ?"COMPRESSION DETECTED"
+          :"No compression detected"]
+    ];
+
+    for(const [label,value] of fields)
+      detail(results,label,value);
+
+    const heading=document.createElement("h2");
+    heading.textContent="Candle Integrity Diagnostics";
+    results.appendChild(heading);
+
+    detail(results,"Fetched at",
+      new Date(now*1000).toLocaleString());
+
+    detail(results,"Expected latest candle start",
+      new Date(expected*1000).toLocaleString());
+
+    detail(results,"Freshness",
+      fresh?"PASS":"WARNING — latest completed interval missing",
+      fresh?"good":"warning");
+
+    detail(results,"Continuity",
+      missing===0?"PASS":"WARNING — missing intervals",
+      missing===0?"good":"warning");
+
+    detail(results,"Missing 30-minute intervals",
+      missing);
+
+    detail(results,"Signal usability",
+      reliable
+        ?"Data checks passed; strategy not yet validated"
+        :"DO NOT USE — incomplete or stale data",
+      reliable?"good":"warning");
+
+  } catch(e) {
+    status.className="status error";
+    status.textContent="TEST FAILED: "+e.message;
+  } finally {
+    button.disabled=false;
   }
-  candles30.sort((a,b)=>a.time-b.time);
-  if(!candles30.length)throw new Error("No complete 30-minute candles found");
-
-  const latest=candles30[candles30.length-1];
-  const audit=auditContinuity(candles30,now);
-  const previous20=candles30.slice(-21,-1);
-  if(previous20.length<20)throw new Error("Not enough candles for volume analysis");
-
-  const averageVolume=previous20.reduce((sum,c)=>sum+c.volume,0)/20;
-  const relativeVolume=averageVolume>0?latest.volume/averageVolume:null;
-  const volumeSignal=relativeVolume===null?"Unavailable":relativeVolume>=1.5?"ELEVATED VOLUME":"Normal volume";
-  const resistance=Math.max(...previous20.map(c=>c.high));
-  const distanceToResistance=((latest.close-resistance)/resistance)*100;
-  const breakoutStatus=latest.close>resistance?"CLOSED ABOVE RESISTANCE":"No confirmed breakout";
-
-  function rangePercent(group){
-   const highest=Math.max(...group.map(c=>c.high));
-   const lowest=Math.min(...group.map(c=>c.low));
-   const averageClose=group.reduce((sum,c)=>sum+c.close,0)/group.length;
-   return ((highest-lowest)/averageClose)*100;
-  }
-
-  const reference10=candles30.slice(-16,-6);
-  const recent5=candles30.slice(-6,-1);
-  if(reference10.length!==10||recent5.length!==5)
-   throw new Error("Not enough candles for compression analysis");
-
-  const referenceRange=rangePercent(reference10);
-  const recentRange=rangePercent(recent5);
-  const compressionRatio=referenceRange>0?recentRange/referenceRange:null;
-  const compressionSignal=compressionRatio===null?"Unavailable":compressionRatio<.60?"COMPRESSION DETECTED":"No compression detected";
-  const reliable=audit.isFresh&&audit.isContinuous;
-
-  status.textContent="Built "+candles30.length+" completed 30-minute candles. "+
-   (reliable?"DATA INTEGRITY PASSED.":"DATA INTEGRITY WARNING — review before using signals.");
-  status.className="status "+(reliable?"good":"warning");
-
-  for(const [label,value] of [
-   ["Market","BTC-USD"],
-   ["Candle start",new Date(latest.time*1000).toLocaleString()],
-   ["Open",fmtMoney(latest.open)],
-   ["High",fmtMoney(latest.high)],
-   ["Low",fmtMoney(latest.low)],
-   ["Close",fmtMoney(latest.close)],
-   ["Volume",latest.volume.toFixed(4)+" BTC"],
-   ["20-candle average",averageVolume.toFixed(4)+" BTC"],
-   ["Relative volume",relativeVolume===null?"N/A":relativeVolume.toFixed(2)+"x"],
-   ["Volume signal",volumeSignal],
-   ["20-candle resistance",fmtMoney(resistance)],
-   ["Distance to resistance",distanceToResistance.toFixed(2)+"%"],
-   ["Breakout status",breakoutStatus],
-   ["Reference 10-candle range",referenceRange.toFixed(2)+"%"],
-   ["Recent 5-candle range",recentRange.toFixed(2)+"%"],
-   ["Compression ratio",compressionRatio===null?"N/A":compressionRatio.toFixed(2)+"x"],
-   ["Compression signal",compressionSignal]
-  ])addDetail(results,label,value);
-
-  const heading=document.createElement("h2");
-  heading.textContent="Candle Integrity Diagnostics";
-  results.appendChild(heading);
-  addDetail(results,"Fetched at",new Date(now*1000).toLocaleString());
-  addDetail(results,"Expected latest candle start",new Date(audit.expectedLatestStart*1000).toLocaleString());
-  addDetail(results,"Freshness",audit.isFresh?"PASS — latest completed interval present":"WARNING — "+audit.intervalsBehind+" completed interval(s) behind",audit.isFresh?"good":"warning");
-  addDetail(results,"Continuity",audit.isContinuous?"PASS — no missing intervals in returned range":"WARNING — missing intervals detected",audit.isContinuous?"good":"warning");
-  addDetail(results,"Missing 30-minute intervals",audit.missingCount);
-  addDetail(results,"Missing-interval gaps",audit.missing.length);
-
-  if(audit.missing.length){
-   const gaps=document.createElement("ul");
-   for(const gap of audit.missing.slice(0,10)){
-    const li=document.createElement("li");
-    li.textContent=gap.count+" missing between "+
-     new Date(gap.after*1000).toLocaleString()+" and "+
-     new Date(gap.before*1000).toLocaleString();
-    gaps.appendChild(li);
-   }
-   results.appendChild(gaps);
-   if(audit.missing.length>10)
-    addDetail(results,"Additional gaps not shown",audit.missing.length-10);
-  }
-  addDetail(results,"Signal usability",reliable?"Data checks passed; strategy not yet validated":"DO NOT USE — incomplete or stale data",reliable?"good":"warning");
- }catch(error){
-  status.className="status error";
-  status.textContent="TEST FAILED: "+error.message;
- }finally{button.disabled=false;}
 };
 
-function ema50(closes){
- if(closes.length<50)throw new Error("Need at least 50 completed daily candles");
- let ema=closes.slice(0,50).reduce((sum,v)=>sum+v,0)/50;
- const alpha=2/51;
- for(let i=50;i<closes.length;i++)
-  ema=closes[i]*alpha+ema*(1-alpha);
- return ema;
-}
-
+// DAILY EMA VERIFICATION
 document.getElementById("daily").onclick=async()=>{
- const status=document.getElementById("dailyStatus");
- const results=document.getElementById("dailyResults");
- const button=document.getElementById("daily");
- button.disabled=true;
- status.className="status";
- status.textContent="Retrieving completed daily candles...";
- results.replaceChildren();
+  const button=document.getElementById("daily");
+  const status=document.getElementById("dailyStatus");
+  const results=document.getElementById("dailyResults");
 
- try {
-  const now=Math.floor(Date.now()/1000);
-  const todayStart=Math.floor(now/DAY)*DAY;
+  button.disabled=true;
+  status.className="status";
+  status.textContent=
+    "Fetching 400 completed daily candles in batches...";
+  results.replaceChildren();
 
-  // Request 180 prior UTC daily intervals.
-  // Exclude today's unfinished daily candle.
-  const start=new Date((todayStart-180*DAY)*1000).toISOString();
-  const end=new Date(todayStart*1000).toISOString();
+  try {
+    const now=Math.floor(Date.now()/1000);
+    const today=Math.floor(now/DAY)*DAY;
 
-  const raw=await getCandles(
-   "BTC-USD",DAY,
-   "&start="+encodeURIComponent(start)+"&end="+encodeURIComponent(end)
-  );
+    const candles=await dailyHistory(today,400);
 
-  const byTime=new Map();
-  for(const c of raw){
-   if(!Array.isArray(c)||c.length<6||!c.slice(0,6).every(Number.isFinite))
-    continue;
-   if(c[0]%DAY!==0||c[0]<todayStart-180*DAY||c[0]+DAY>todayStart)
-    continue;
-   byTime.set(c[0],{time:c[0],close:c[4]});
+    const expected=today-DAY;
+    const missing=gaps(candles,DAY);
+
+    const fresh=
+      candles.length>0 &&
+      candles[candles.length-1].time===expected;
+
+    const complete=
+      candles.length===400 &&
+      missing===0 &&
+      fresh &&
+      candles[0].time===today-400*DAY;
+
+    detail(results,"UTC daily history returned",
+      candles.length+" / 400 expected");
+
+    detail(results,"Last completed day",
+      candles.length
+        ?date(candles[candles.length-1].time)
+        :"None");
+
+    detail(results,"Freshness",
+      fresh?"PASS":"WARNING",
+      fresh?"good":"warning");
+
+    detail(results,"Missing daily intervals",missing);
+
+    if(!complete) {
+      status.className="status warning";
+      status.textContent=
+        "DAILY DATA INTEGRITY WARNING — EMA comparison unavailable.";
+
+      detail(results,"Action",
+        "Check history completeness; do not use trend filter",
+        "warning");
+      return;
+    }
+
+    const closes=candles.map(c=>c.close);
+
+    const ema180=ema(closes.slice(-180));
+    const ema400=ema(closes);
+    const ema400Prior=ema(closes.slice(0,-1));
+
+    const delta=ema180-ema400;
+    const latest=candles[candles.length-1];
+
+    const above=latest.close>ema400;
+    const rising=ema400>ema400Prior;
+
+    status.className="status good";
+    status.textContent=
+      "DAILY HISTORY PASSED — EMA comparison complete.";
+
+    detail(results,"Comparison candle (UTC)",
+      date(latest.time));
+
+    detail(results,"Latest completed daily close",
+      money(latest.close));
+
+    detail(results,"50 EMA using 180 candles",
+      money(ema180));
+
+    detail(results,"50 EMA using 400 candles",
+      money(ema400));
+
+    detail(results,"180 vs 400 difference",
+      money(Math.abs(delta))+
+      (delta>=0?" (180 higher)":" (180 lower)"));
+
+    detail(results,"400-candle EMA slope",
+      rising?"Rising":"Flat or falling",
+      rising?"good":"warning");
+
+    detail(results,"Price vs 400-candle EMA",
+      above?"Above":"At or below",
+      above?"good":"warning");
+
+    detail(results,"Bullish daily trend filter",
+      above&&rising?"PASS":"NOT MET",
+      above&&rising?"good":"warning");
+
+    detail(results,"Verification note",
+      "Compare Coinbase EMA on the same completed UTC daily candle; chart may include a forming candle.");
+
+    detail(results,"Signal usability",
+      "Diagnostic only — strategy not yet validated");
+
+  } catch(e) {
+    status.className="status error";
+    status.textContent="TEST FAILED: "+e.message;
+  } finally {
+    button.disabled=false;
   }
-
-  const candles=[...byTime.values()].sort((a,b)=>a.time-b.time);
-  if(candles.length<100)
-   throw new Error("Insufficient completed daily history (need at least 100; received "+candles.length+")");
-
-  let missing=0;
-  for(let i=1;i<candles.length;i++)
-   missing+=Math.max(0,Math.round((candles[i].time-candles[i-1].time)/DAY)-1);
-
-  const latest=candles[candles.length-1];
-  const expectedLatest=todayStart-DAY;
-  const fresh=latest.time===expectedLatest;
-  const continuous=missing===0;
-  const valid=fresh&&continuous;
-
-  status.className="status "+(valid?"good":"warning");
-  status.textContent=valid?
-   "DAILY DATA INTEGRITY PASSED.":
-   "DAILY DATA INTEGRITY WARNING — trend filter unavailable.";
-
-  addDetail(results,"Time basis","UTC daily candles (not Phoenix midnight)");
-  addDetail(results,"Completed daily candles",candles.length);
-  addDetail(results,"Latest completed day",new Date(latest.time*1000).toISOString().slice(0,10));
-  addDetail(results,"Expected latest day",new Date(expectedLatest*1000).toISOString().slice(0,10));
-  addDetail(results,"Freshness",fresh?"PASS":"WARNING — latest daily candle missing",fresh?"good":"warning");
-  addDetail(results,"Continuity",continuous?"PASS":"WARNING — "+missing+" missing daily interval(s)",continuous?"good":"warning");
-
-  if(!valid){
-   addDetail(results,"Trend classification","UNAVAILABLE — incomplete or stale daily data","warning");
-   return;
-  }
-
-  const currentEma=ema50(candles.map(c=>c.close));
-  const priorEma=ema50(candles.slice(0,-1).map(c=>c.close));
-  const above=latest.close>currentEma;
-  const rising=currentEma>priorEma;
-
-  addDetail(results,"Latest daily close",fmtMoney(latest.close));
-  addDetail(results,"Daily 50 EMA",fmtMoney(currentEma));
-  addDetail(results,"50 EMA slope",rising?"Rising":"Flat or falling",rising?"good":"warning");
-  addDetail(results,"Price vs 50 EMA",above?"Above":"At or below",above?"good":"warning");
-  addDetail(results,"Bullish daily trend filter",above&&rising?"PASS":"NOT MET",above&&rising?"good":"warning");
-  addDetail(results,"Signal usability","Trend diagnostic only; no entry signal or validated strategy");
-
- }catch(error){
-  status.className="status error";
-  status.textContent="TEST FAILED: "+error.message;
- }finally{button.disabled=false;}
 };
 </script>
 </body>
